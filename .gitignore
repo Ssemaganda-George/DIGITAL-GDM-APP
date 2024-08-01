@@ -1,1 +1,8 @@
+# Ignore the .env file
+.env
+env
+embeggings.nyp
 
+# Ignore other sensitive files
+secret_keys.txt
+config.json
