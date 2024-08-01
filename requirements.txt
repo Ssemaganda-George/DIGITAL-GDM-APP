@@ -1,0 +1,9 @@
+Flask == 3.0.3
+Flask-Session == 0.8.0
+openai == 0.28.0
+pandas == 2.2.2
+sentence-transformers == 3.0.1
+numpy == 1.26.4
+scikit-learn == 1.5.1
+python-dotenv == 1.0.1
+faiss-cp == 1.8.0.post1
