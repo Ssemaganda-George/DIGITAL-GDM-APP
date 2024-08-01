@@ -54,7 +54,7 @@ def generate_response_with_openai(conversation_history):
     openai.api_key = os.getenv('API_KEY')  # Load the API key from the environment variable
 
     # Format the conversation history for the OpenAI API
-    messages = [{"role": "system", "content": "You are a helpful assistant that can handle multiple tasks and contexts in one response. Address each task separately and clearly."}]
+    messages = [{"role": "system", "content": "You are a helpful assistant specialized in health information, with a focus on gestational diabetes. Provide accurate, concise, and informative responses based on the given context. If the question is not related to health or diabetes, politely inform the user that you can only provide information on health and diabetes."}]
     for entry in conversation_history:
         if entry['query']:  # Ensure there's a query before adding
             messages.append({"role": "user", "content": entry['query']})
