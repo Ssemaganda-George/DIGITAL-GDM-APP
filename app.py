@@ -3,96 +3,47 @@ import openai
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
-import time
 from dotenv import load_dotenv
 import os
 
 app = Flask(__name__)
-app.secret_key = b'\xdb\x908\x9bsKD\x1c\x91\x8a\xd84\x01\xcb\xa5]\x8b\xa9n\x10\xd7\x1e\x11g'  # Use your generated secret key
+app.secret_key = os.urandom(24)  # Automatically generates a secret key
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
-# Load cleaned data
-def load_cleaned_data(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
-        return file.readlines()
+# Load data and embeddings
+data = open('cleaned_data.txt', 'r', encoding='utf-8').readlines()
+embeddings = np.load('embeddings.npy')
 
-# Load embeddings from file
-def load_embeddings(file_path):
-    return np.load(file_path)
+# Set up FAISS index
+embedding_dim = embeddings.shape[1]
+faiss_index = faiss.IndexFlatL2(embedding_dim)
+faiss_index.add(embeddings)
 
-# Initialize global variables at the module level
-data = load_cleaned_data('cleaned_data.txt')
-embeddings = load_embeddings('embeddings.npy')
-
-# Ensure the correct dimension of the embeddings
-embedding_dim = embeddings.shape[1]  # Dimension of the embeddings
-faiss_index = faiss.IndexFlatL2(embedding_dim)  # Use L2 distance
-faiss_index.add(embeddings)  # Add embeddings to the index
-
+# Initialize Sentence Transformer model
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Retrieve context using FAISS
-def retrieve_context(query, faiss_index, data, top_n=10):
-    start_time = time.time()
-    query_embedding = model.encode([query], convert_to_tensor=True)
-    query_embedding = query_embedding.cpu().numpy()  # Move tensor to CPU and convert to NumPy array
-    D, I = faiss_index.search(query_embedding, top_n)  # Search the FAISS index
-    context_retrieval_time = time.time()
-    print(f"Time for context retrieval: {context_retrieval_time - start_time} seconds")
-    return [data[idx] for idx in I[0]]  # I[0] since I is a list of lists
+# Function to retrieve context
+def retrieve_context(query, top_n=10):
+    query_embedding = model.encode([query], convert_to_tensor=True).cpu().numpy()
+    _, indices = faiss_index.search(query_embedding, top_n)
+    return [data[idx] for idx in indices[0]]
 
-# Combine multiple contexts into a single string with clear separation
-def combine_contexts(contexts):
-    combined_context = "\n\n".join(contexts)
-    return combined_context
-
-# Generate response with OpenAI API
-def generate_response_with_openai(conversation_history):
-    start_time = time.time()
-    openai.api_key = os.getenv('API_KEY')  # Load the API key from the environment variable
-
-    # Format the conversation history for the OpenAI API
-    messages = [{"role": "system", "content": "You are a helpful assistant specialized in health information, with a focus on gestational diabetes. Provide accurate, concise, and informative responses based on the given context. If the question is not related to health or diabetes, politely inform the user that you can only provide information on health and diabetes."}]
-    for entry in conversation_history:
-        if entry['query']:  # Ensure there's a query before adding
-            messages.append({"role": "user", "content": entry['query']})
-        if entry['response']:  # Ensure there's a response before adding
-            messages.append({"role": "assistant", "content": entry['response']})
-
+# Function to generate response with OpenAI API
+def generate_response(conversation_history):
+    openai.api_key = os.getenv('API_KEY')
+    messages = [{"role": "system", "content": "You are a helpful assistant specialized in maternal health information, with a focus on gestational diabetes. Provide accurate, concise, and informative responses based on the given context. If the question is not related to maternal health or gestational diabetes, politely inform the user that you can only provide information on maternal health and gestational diabetes."}]
+    messages += [{"role": "user", "content": entry['query']} for entry in conversation_history if entry['query']]
+    messages += [{"role": "assistant", "content": entry['response']} for entry in conversation_history if entry['response']]
+    
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=messages,
-        max_tokens=1500,  # Increase token limit if needed
+        max_tokens=1500,
         temperature=0.7
     )
-
-    answer = response.choices[0].message['content'].strip()
-    response_generation_time = time.time()
-    print(f"Time for response generation: {response_generation_time - start_time} seconds")
-    return answer
-
-# Summarize the conversation history
-def summarize_conversation(conversation_history):
-    # Combine all responses in the conversation history
-    all_responses = " ".join([entry['response'] for entry in conversation_history if entry['response']])
-    
-    openai.api_key = os.getenv('API_KEY')  # Load the API key from the environment variable
-    summary_prompt = f"Summarize the following conversation: {all_responses}"
-    
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that summarizes conversations."},
-            {"role": "user", "content": summary_prompt}
-        ],
-        max_tokens=150,
-        temperature=0.5
-    )
-    
-    summary = response.choices[0].message['content'].strip()
-    return summary
+    return response.choices[0].message['content'].strip()
 
 @app.route('/')
 def index():
@@ -100,48 +51,20 @@ def index():
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    start_time = time.time()
     user_query = request.form['query']
-
-    # Retrieve previous context from session
     if 'conversation_history' not in session:
         session['conversation_history'] = []
 
-    # Generate context based on the current query
-    contexts = retrieve_context(user_query, faiss_index, data)
-    combined_context = combine_contexts(contexts)
+    contexts = retrieve_context(user_query)
+    combined_context = "\n\n".join(contexts)
 
-    # Add context to the conversation history
     conversation_history = session['conversation_history']
-    conversation_history.append({'query': user_query, 'response': ''})  # Add the new query to the history for context generation
+    conversation_history.append({'query': user_query, 'response': combined_context})
+    response = generate_response(conversation_history)
+    conversation_history[-1]['response'] = response
 
-    # Add the combined context as a special entry in the conversation history
-    if combined_context:
-        conversation_history.append({'query': '', 'response': combined_context})
-
-    # Generate response based on the entire conversation history
-    response = generate_response_with_openai(conversation_history)
-    # Split response into tasks if it contains multiple tasks
-    split_responses = response.split('\n\n')
-    
-    # Update conversation history with each task response
-    for i, task_response in enumerate(split_responses):
-        if i < len(conversation_history):
-            conversation_history[i]['response'] = task_response
-        else:
-            conversation_history.append({'query': '', 'response': task_response})
-    
-    # Update conversation history in the session
     session['conversation_history'] = conversation_history
-
-    # Optionally, summarize the conversation history
-    summary = summarize_conversation(conversation_history)
-
-    response_time = time.time()
-    print(f"Time to get response from OpenAI: {response_time - start_time} seconds")
-    print(f"Conversation History: {session['conversation_history']}")  # Debug statement to check conversation history
-    
-    return jsonify({'response': response, 'conversation_history': session['conversation_history'], 'summary': summary})
+    return jsonify({'response': response, 'conversation_history': session['conversation_history']})
 
 if __name__ == '__main__':
     app.run(debug=True)
