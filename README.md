@@ -2,6 +2,19 @@
 This repo has a RAG application for gestational diabetes.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 Requirements to set up the environment and run the flask application:
 
 Create a virtual environment:
