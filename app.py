@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import os
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Automatically generates a secret key
+app.secret_key = b'\xdb\x908\x9bsKD\x1c\x91\x8a\xd84\x01\xcb\xa5]\x8b\xa9n\x10\xd7\x1e\x11g'
 
 # Load environment variables
 load_dotenv()
@@ -51,7 +51,14 @@ def index():
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    user_query = request.form['query']
+    if request.is_json:
+        user_query = request.json.get('query')
+    else:
+        user_query = request.form.get('query')
+    
+    if not user_query:
+        return jsonify({'error': 'No query provided'}), 400
+
     if 'conversation_history' not in session:
         session['conversation_history'] = []
 
