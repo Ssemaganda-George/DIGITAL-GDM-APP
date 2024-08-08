@@ -38,4 +38,8 @@ Run the embeddings.py:
 python3 embeddings.py
 
 Run the Flask Application locally:
-python3 app.py
+python app.py
+
+Run the tests files:
+Make sure the server is running and then run:
+python alltests.py
