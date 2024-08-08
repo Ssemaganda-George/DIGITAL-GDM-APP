@@ -6,3 +6,4 @@ embeddings.npy
 # Ignore other sensitive files
 secret_keys.txt
 config.json
+
