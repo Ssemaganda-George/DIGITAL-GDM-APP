@@ -41,3 +41,5 @@ python app.py
 Run the tests files:
 Make sure the server is running and then run:
 python alltests.py
+
+
